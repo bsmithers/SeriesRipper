@@ -14,6 +14,7 @@ parser.add_argument('series', help='Series of disk', type=int)
 parser.add_argument('shorthand', help='Shorthand for series')
 parser.add_argument('runtime', help='Approximate runtime in minutes', type=int)
 parser.add_argument('--out_base_dir', help='Base level of output directory. Rips automatically organised by name and series', default='/Users/bs8959/Movies/TV')
+parser.add_argument('-s', '--skip', help='Skip the first n episodes. Useful for recovery in the event of failure', type=int, default=0)
 parser.add_argument('-e', '--episodes', help='Number of episodes on the disk, if known', type=int)
 parser.add_argument('-t', '--time-delta', help='Allowable time difference from approx_runtime', type=float, default=5)
 parser.add_argument('-y', '--yes', help='Say yes to questions and don\'t ask for any confirmation', action='store_true', default=False)
@@ -230,6 +231,10 @@ if __name__ == "__main__":
 
     print 'Getting episodes'
     episodes = get_episodes(['-i', args.input], args.runtime, args.time_delta * 60, args.episodes)
+
+    if args.skip > 0:
+        print 'Skipping the first %d episodes' % (args.skip)
+        episodes = episodes[args.skip:]
 
     if len(episodes) == 0:
         print >> sys.stderr, 'No episodes for encode found.'
