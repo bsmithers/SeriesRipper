@@ -139,8 +139,7 @@ def _parse_episodes(handbrake_response):
                 print 'Title %d with video track %d already has a duration, cannot parse the episode list!' % (len(episodes), episodes[-1]['duration'])
                 return []
             duration_string = line.split()[2] # Example line is '+ duration: 00:26:06'
-            (hours, minutes, seconds) = map(int, duration_string.split(':'))
-            episodes[-1]['duration'] = hours * 60 + minutes + seconds/60
+            episodes[-1]['duration'] = get_duration_in_seconds(line.split()[2])
         elif line.startswith('+ audio tracks'):
             if 'audio_track' in episodes[-1]:
                 print 'Title %d with video track %d already has a audio track, cannot parse the episode list!' % (len(episodes), episodes[-1]['audio_track'])
@@ -193,6 +192,35 @@ def check_environment(basedir, show, series, shorthand):
 
     return (series_dir, episode_offset)
 
+def get_duration_in_seconds(duration_string):
+    """
+    Convert a time in the form of hh:mm:ss to a number of seconds
+    """
+    (hours, minutes, seconds) = map(float, duration_string.split(':'))
+    return hours * 3600 + minutes * 60 + seconds
+
+def get_length(filename):
+    """
+    Get the length of the supplied video in seconds file by calling ffprobe
+    (Courtesty of http://stackoverflow.com/questions/3844430/how-to-get-video-duration-in-python-or-django/3844467#3844467)
+    Returns -1 on error
+    """
+    p = subprocess.Popen(['ffprobe', filename], stderr=subprocess.PIPE)
+    (stdout, stderr) = p.communicate()
+
+    if p.returncode != 0:
+        print >> sys.stderr, 'Error occurred calling ffprobe with:', filename
+        return -1
+
+    for line in stderr.split('\n'):
+        if 'Duration' in line:
+            #Example line: Duration: 00:28:45.01, start: 0.000000, bitrate: 1032 kb/s
+            duration_string = line.split()[1][:-1]
+            return get_duration_in_seconds(duration_string)
+
+    print >> sys.stderr, 'No duration found in ffprobe output for:', filename
+    return -1
+
 if __name__ == "__main__":
     #Check environment and determine episode offset and final output directory
     output_dir, episode_offset = check_environment(args.out_base_dir, args.show, args.series, args.shorthand)
@@ -200,8 +228,8 @@ if __name__ == "__main__":
     print 'Output directory will be:', output_dir
     print 'Episode offset:', episode_offset
 
-    print >> sys.stderr, 'Getting episodes'
-    episodes = get_episodes(['-i', args.input], args.runtime, args.time_delta, args.episodes)
+    print 'Getting episodes'
+    episodes = get_episodes(['-i', args.input], args.runtime, args.time_delta * 60, args.episodes)
 
     if len(episodes) == 0:
         print >> sys.stderr, 'No episodes for encode found.'
@@ -212,7 +240,7 @@ if __name__ == "__main__":
     for index, episode in enumerate(episodes):
         output_name = '%s_S%d_E%d.m4v' % (args.shorthand, args.series, index+1+episode_offset)
         episode['destination'] = os.path.join(output_dir, output_name) 
-        print 'Job %d: Title: %d, Audio: %d, Duration: %.1fm --> %s\n\tAudio Description: %s' % (index+1, episode['video_track'], episode['audio_track'], episode['duration'], episode['destination'], episode['audio_description'])
+        print 'Job %d: Title: %d, Audio: %d, Duration: %.1fm --> %s\n\tAudio Description: %s' % (index+1, episode['video_track'], episode['audio_track'], episode['duration']/60, episode['destination'], episode['audio_description'])
     print '-' * 40
     if not args.yes:
         print 'Please confirm this looks good'
@@ -230,4 +258,15 @@ if __name__ == "__main__":
         if not success:
             print 'Failed to complete rip. Aborting the rest of the jobs. Error:', stderr
             break
+
+        #HandBrake doesn't appear to always return an error status on failure, so we will check the results to make sure
+        output_duration = get_length(episode['destination'])
+        if output_duration == -1:
+            print >> 'Unable to check the output duration. Aborting the rest of the jobs'
+            break
+
+        if abs(output_duration - episode['duration']) > 1:
+            print >> sys.stderr, 'Output and input durations do not match! Input: %fs, Output: %fs. Aborting the rest of the jobs' % (episode['duration'], output_duration)
+            break
+
         print 'Done'
