@@ -60,7 +60,7 @@ def select_episodes(episodes, approx_runtime, allowable_time_delta, known_num_ep
     """
     selected = []
     for episode in episodes:
-        time_delta = approx_runtime - abs(episode['duration'])
+        time_delta = abs(approx_runtime - episode['duration'])
         if time_delta <= allowable_time_delta:
             selected.append(episode)
 
@@ -230,7 +230,7 @@ if __name__ == "__main__":
     print 'Episode offset:', episode_offset
 
     print 'Getting episodes'
-    episodes = get_episodes(['-i', args.input], args.runtime, args.time_delta * 60, args.episodes)
+    episodes = get_episodes(['-i', args.input], args.runtime * 60, args.time_delta * 60, args.episodes)
 
     if args.skip > 0:
         print 'Skipping the first %d episodes' % (args.skip)
